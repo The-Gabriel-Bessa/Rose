@@ -1,37 +1,40 @@
 {
   "name": "rose-opencode",
-  "version": "0.1.0",
-  "description": "Autonomous Developer / Tester / User Orchestrator for OpenCode",
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "bin": {
-    "rose": "./dist/cli.js"
-  },
+  "version": "1.0.0",
+  "description": "Rose - Autonomous Developer / Tester / User Orchestrator",
+  "main": "electron/main.js",
   "scripts": {
+    "start": "electron .",
     "build": "tsc",
-    "dev": "tsx src/cli.ts start -n TestProject -o 'Test objective'",
-    "start": "node dist/cli.js",
-    "cli": "node dist/cli.js start",
-    "test": "node --test src/**/*.test.ts",
-    "typecheck": "tsc --noEmit",
-    "package": "pkg dist/cli.js --targets node18-win-x64 --output dist/rose.exe"
+    "build:exe": "electron-builder --win",
+    "typecheck": "tsc --noEmit"
+  },
+  "build": {
+    "appId": "com.rose.orchestrator",
+    "productName": "Rose Orchestrator",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "files": [
+      "electron/**/*",
+      "assets/**/*"
+    ]
   },
   "dependencies": {
-    "@opencode-ai/sdk": "latest",
-    "boxen": "^8.0.1",
-    "chalk-cli": "^6.0.0",
-    "commander": "^15.0.0",
-    "ink": "^7.1.1",
-    "react": "^19.2.8"
+    "@opencode-ai/sdk": "latest"
   },
   "devDependencies": {
-    "@types/commander": "^2.12.0",
-    "@types/ink": "^0.5.2",
-    "@types/node": "^22.0.0",
-    "@types/react": "^19.2.18",
-    "tsx": "^4.19.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
     "typescript": "^5.7.0",
-    "pkg": "^5.8.1"
+    "@types/node": "^22.0.0"
   }
 }
