@@ -1,9 +1,11 @@
 import { StateMachine } from "./state-machine.js";
 import { ProjectMemory } from "./memory.js";
 import { RoseClient, SessionManager } from "../opencode-adapter/index.js";
+import { RecoveryManager, StateVerifier } from "../diagnostics/index.js";
 import type { RoseConfig, RoseState } from "../types/state.js";
 import { DEFAULT_CONFIG } from "../types/state.js";
 import type { Task, Bug, TestCase } from "../types/project.js";
+import type { AgentMetrics } from "../diagnostics/recovery-types.js";
 
 export interface OrchestratorEvents {
   onStateChange?: (state: RoseState, previous: RoseState) => void;
@@ -13,6 +15,8 @@ export interface OrchestratorEvents {
   onTestResult?: (test: TestCase) => void;
   onTaskComplete?: (task: Task) => void;
   onUserRequired?: (question: string, options: string[]) => void;
+  onRecovery?: (checkpointId: string, reason: string) => void;
+  onAgentHealth?: (status: string, score: number) => void;
 }
 
 export class Orchestrator {
@@ -20,11 +24,16 @@ export class Orchestrator {
   private memory: ProjectMemory;
   private sessionManager: SessionManager;
   private client: RoseClient;
+  private recoveryManager: RecoveryManager;
+  private stateVerifier: StateVerifier;
   private config: RoseConfig;
   private events: OrchestratorEvents;
   private iterationCount = 0;
   private fixAttemptCount = 0;
   private running = false;
+  private agentAttemptCount = 0;
+  private agentSuccessCount = 0;
+  private agentFailCount = 0;
 
   constructor(
     projectName: string,
@@ -37,6 +46,8 @@ export class Orchestrator {
     this.memory = new ProjectMemory(projectName, objective);
     this.client = new RoseClient(this.config);
     this.sessionManager = new SessionManager(this.client);
+    this.recoveryManager = new RecoveryManager();
+    this.stateVerifier = new StateVerifier();
     this.events = events;
 
     this.stateMachine.onTransition(
@@ -500,12 +511,6 @@ export class Orchestrator {
     this.running = false;
   }
 
-  private handleCycleError(error: Error): void {
-    if (this.fixAttemptCount >= this.config.maxFixAttempts) {
-      this.transition("BLOCKED");
-    }
-  }
-
   private parseRequirements(analysis: string): string[] {
     const lines = analysis.split("\n");
     const requirements: string[] = [];
@@ -603,6 +608,105 @@ export class Orchestrator {
     return failed;
   }
 
+  private async checkAgentHealth(): Promise<boolean> {
+    this.agentAttemptCount++;
+
+    const metrics: AgentMetrics = {
+      attemptCount: this.agentAttemptCount,
+      uniqueSolutions: new Set(this.recoveryManager.getSolutionHistory()).size,
+      repeatedSolutions: this.agentAttemptCount - new Set(this.recoveryManager.getSolutionHistory()).size,
+      failedAttempts: this.agentFailCount,
+      successfulAttempts: this.agentSuccessCount,
+      contextTokensUsed: 0,
+      contextTokensRemaining: 100000,
+      timeSinceLastSuccess: Date.now() - (this.recoveryManager as any).lastSuccessTime,
+      errorRate: this.agentFailCount / Math.max(1, this.agentAttemptCount),
+    };
+
+    const healthCheck = await this.recoveryManager.checkAgentHealth(metrics);
+    this.events.onAgentHealth?.(healthCheck.status, healthCheck.score);
+
+    if (healthCheck.status === "critical" || healthCheck.status === "failed") {
+      return false;
+    }
+
+    return true;
+  }
+
+  private async attemptRecovery(reason: string): Promise<boolean> {
+    if (!this.recoveryManager.shouldRecover()) {
+      this.events.onProgress?.("Max recovery attempts reached");
+      return false;
+    }
+
+    this.events.onProgress?.(`Recovery triggered: ${reason}`);
+
+    const state = this.memory.getState();
+    const gitStatus = await this.stateVerifier.verifyGitStatus();
+    const gitDiff = await this.stateVerifier.verifyGitDiff();
+
+    const checkpoint = await this.recoveryManager.createCheckpoint({
+      objective: state.objective,
+      currentTask: state.tasks.find((t) => t.status === "IN_PROGRESS")?.title || "None",
+      completedTasks: state.tasks.filter((t) => t.status === "COMPLETED").map((t) => t.title),
+      pendingTasks: state.tasks.filter((t) => t.status === "PENDING").map((t) => t.title),
+      knownBugs: state.bugs.filter((b) => b.status === "OPEN").map((b) => b.title),
+      testResults: {
+        passed: state.tests.filter((t) => t.status === "PASS").map((t) => t.id),
+        failed: state.tests.filter((t) => t.status === "FAIL").map((t) => t.id),
+      },
+      failedApproaches: this.recoveryManager.getSolutionHistory().slice(-5),
+      recentChanges: gitDiff.split("\n").slice(0, 20),
+      gitStatus: `${gitStatus.branch} ${gitStatus.dirty ? "(dirty)" : "(clean)"}`,
+      gitDiff: gitDiff.substring(0, 5000),
+      buildState: "unknown",
+      reasonForRecovery: reason,
+      previousSessionId: this.sessionManager.activeSession || "unknown",
+    });
+
+    this.events.onRecovery?.(checkpoint.id, reason);
+
+    await this.sessionManager.startNewSessionAfterContextFull(reason);
+
+    this.agentAttemptCount = 0;
+    this.agentSuccessCount = 0;
+    this.agentFailCount = 0;
+    this.recoveryManager.reset();
+
+    const recoveryPrompt = this.recoveryManager.generateRecoveryPrompt(checkpoint);
+    await this.sessionManager.sendTaskWithContext(
+      "Continue the project from the verified state",
+      recoveryPrompt
+    );
+
+    return true;
+  }
+
+  private recordAttempt(success: boolean, solution: string): void {
+    this.recoveryManager.recordAttempt(solution);
+    this.recoveryManager.recordSolution(solution);
+
+    if (success) {
+      this.agentSuccessCount++;
+      this.recoveryManager.markSuccess();
+    } else {
+      this.agentFailCount++;
+    }
+  }
+
+  private async handleCycleError(error: Error): Promise<void> {
+    this.recordAttempt(false, `Error: ${error.message}`);
+
+    if (this.fixAttemptCount >= this.config.maxFixAttempts) {
+      const recovered = await this.attemptRecovery(`Too many fix attempts: ${error.message}`);
+      if (recovered) {
+        this.fixAttemptCount = 0;
+        return;
+      }
+      this.transition("BLOCKED");
+    }
+  }
+
   private transition(to: RoseState): void {
     this.stateMachine.transition(to);
   }
@@ -624,5 +728,13 @@ export class Orchestrator {
   async resume(): Promise<void> {
     this.running = true;
     await this.runCycle();
+  }
+
+  getRecoveryManager(): RecoveryManager {
+    return this.recoveryManager;
+  }
+
+  getStateVerifier(): StateVerifier {
+    return this.stateVerifier;
   }
 }

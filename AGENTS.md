@@ -18,6 +18,17 @@ Rose
 │   │   └── session-manager.ts   # Gerenciamento de sessões
 │   ├── persistence/             # Persistência de estado
 │   │   └── storage.ts           # Armazenamento em disco
+│   ├── testing/                 # Engine de testes
+│   │   ├── simulator.ts         # Simulação de usuário (CLI, API, Browser)
+│   │   ├── runner.ts            # Executor de testes
+│   │   └── regression.ts        # Testes de regressão
+│   ├── review/                  # Revisão de código
+│   │   ├── reviewer.ts          # Code review engine
+│   │   └── improvements.ts      # Engine de melhorias
+│   ├── diagnostics/             # Diagnóstico e recuperação
+│   │   ├── recovery.ts          # Agent Recovery & Anti-Hallucination
+│   │   ├── verifier.ts          # Verificação de estado real
+│   │   └── recovery-types.ts    # Tipos de recuperação
 │   ├── types/                   # Definições de tipos
 │   │   ├── state.ts             # Estados do Rose
 │   │   ├── project.ts           # Tipos do projeto
@@ -51,6 +62,22 @@ Rose
 11. **FINAL_VALIDATION** - Validação final
 12. **CODE_REVIEW** - Revisão de código
 13. **COMPLETED** - Entrega
+
+## Agent Recovery & Anti-Hallucination
+
+O Rose detecta automaticamente:
+- Repetição de soluções
+- Loops de tentativa
+- Alucinações do agente
+- Perda de contexto
+- Contradições entre afirmações e realidade
+- Execução fantasma (afirma executar mas não executa)
+
+Quando detecta degradação:
+1. Cria checkpoint do estado real
+2. Verifica filesystem, git, testes, build
+3. Inicia nova sessão com contexto reconstruído
+4. Continua a partir do estado VERIFICADO
 
 ## Convenções
 
