@@ -1,0 +1,1 @@
+{"version":3,"file":"index.d.ts","sourceRoot":"","sources":["../../src/diagnostics/index.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,eAAe,EAAE,MAAM,eAAe,CAAC;AAChD,OAAO,EAAE,aAAa,EAAE,iBAAiB,EAAE,MAAM,eAAe,CAAC;AACjE,YAAY,EACV,iBAAiB,EACjB,gBAAgB,EAChB,YAAY,EACZ,kBAAkB,EAClB,cAAc,EACd,eAAe,GAChB,MAAM,qBAAqB,CAAC;AAC7B,YAAY,EAAE,eAAe,EAAE,MAAM,eAAe,CAAC"}

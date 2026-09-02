@@ -1,0 +1,67 @@
+import { RecoveryManager, StateVerifier } from "../diagnostics/index.js";
+import type { RoseConfig, RoseState } from "../types/state.js";
+import type { Task, Bug, TestCase } from "../types/project.js";
+export interface OrchestratorEvents {
+    onStateChange?: (state: RoseState, previous: RoseState) => void;
+    onProgress?: (message: string) => void;
+    onError?: (error: Error) => void;
+    onBugFound?: (bug: Bug) => void;
+    onTestResult?: (test: TestCase) => void;
+    onTaskComplete?: (task: Task) => void;
+    onUserRequired?: (question: string, options: string[]) => void;
+    onRecovery?: (checkpointId: string, reason: string) => void;
+    onAgentHealth?: (status: string, score: number) => void;
+}
+export declare class Orchestrator {
+    private stateMachine;
+    private memory;
+    private sessionManager;
+    private client;
+    private recoveryManager;
+    private stateVerifier;
+    private config;
+    private events;
+    private iterationCount;
+    private fixAttemptCount;
+    private running;
+    private agentAttemptCount;
+    private agentSuccessCount;
+    private agentFailCount;
+    constructor(projectName: string, objective: string, config?: Partial<RoseConfig>, events?: OrchestratorEvents);
+    get currentState(): RoseState;
+    get projectState(): import("../index.js").ProjectState;
+    createSession(title: string): Promise<string>;
+    start(): Promise<void>;
+    private runCycle;
+    private executeCurrentState;
+    private analyze;
+    private plan;
+    private implement;
+    private build;
+    private test;
+    private inspect;
+    private diagnoseBug;
+    private fix;
+    private retest;
+    private scanImprovements;
+    private improve;
+    private finalValidation;
+    private codeReview;
+    private handleUserRequired;
+    private parseRequirements;
+    private parseTasks;
+    private generateTestCases;
+    private parseTestResults;
+    private checkAgentHealth;
+    private attemptRecovery;
+    private recordAttempt;
+    private handleCycleError;
+    private transition;
+    private delay;
+    stop(): void;
+    pause(): Promise<void>;
+    resume(): Promise<void>;
+    getRecoveryManager(): RecoveryManager;
+    getStateVerifier(): StateVerifier;
+}
+//# sourceMappingURL=orchestrator.d.ts.map
